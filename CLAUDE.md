@@ -26,9 +26,13 @@ The four mismatch `type` strings (`'extra'`, `'revoked'`, `'role-mismatch'`, `'u
 
 `auditAccessAndReport` is invoked in production by a time-based trigger set up manually via the Apps Script Triggers UI (a few times a day) — this wiring lives outside the codebase entirely, not in any `.js` file. Don't add trigger-creation code (e.g. `ScriptApp.newTrigger`) unless explicitly asked.
 
+The report email addresses all of `Handbook!G2:G` in a single comma-joined `To:` field (see `EmailReport.js`), not `Bcc:` — this was a deliberate choice, not an oversight. Don't switch to Bcc without checking with the user first.
+
 ## Verification
 
 There's no automated test suite, and `DriveApp`/`SpreadsheetApp`/`MailApp` can't run outside the Apps Script runtime. `node --check <file>.js` only catches JS syntax errors locally. To actually verify a change: run the relevant function manually from the Apps Script editor's function dropdown (after `clasp push`, with the user's confirmation) and check the Executions log for errors and `Logger.log` output.
+
+Any change touching `writeAccessMatrixValues()` (i.e. anything that writes real cells in the Access sheet) should be tested against a scratch copy of the spreadsheet first, not production — Sheets' undo/version history is the only safety net for a bad write.
 
 ## Conventions
 
