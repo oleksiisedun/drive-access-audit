@@ -16,9 +16,19 @@ Google Apps Script project, container-bound to a Google Sheet, deployed with `cl
 - `Audit.js` — `collectAccessMismatches()` (pure detection, returns an array) and `auditAccessAndReport()` (trigger-ready entry point; emails only when mismatches exist).
 - `EmailReport.js` — HTML + plain-text formatting and the `MailApp.sendEmail` call.
 
-## Known gotcha
+## Known gotchas
 
 `DriveApp.getFileById(id).getEditors()` does **not** include the file owner — Drive treats ownership as a separate permission role from "writer". `buildAllDocAccessCaches()` explicitly folds `file.getOwner()` into the `editors` set to compensate; if this is ever refactored, keep that merge or owners will silently read as having no access.
+
+The four mismatch `type` strings (`'extra'`, `'revoked'`, `'role-mismatch'`, `'unknown-accessor'`) are hardcoded literals in `Audit.js` (where they're pushed onto the `mismatches` array) and separately as keys in `EmailReport.js`'s `MISMATCH_TYPE_LABELS`. Nothing enforces they stay in sync — adding or renaming a type in `Audit.js` without updating `MISMATCH_TYPE_LABELS` prints `undefined` in the email report instead of erroring.
+
+## Operational setup
+
+`auditAccessAndReport` is invoked in production by a time-based trigger set up manually via the Apps Script Triggers UI (a few times a day) — this wiring lives outside the codebase entirely, not in any `.js` file. Don't add trigger-creation code (e.g. `ScriptApp.newTrigger`) unless explicitly asked.
+
+## Verification
+
+There's no automated test suite, and `DriveApp`/`SpreadsheetApp`/`MailApp` can't run outside the Apps Script runtime. `node --check <file>.js` only catches JS syntax errors locally. To actually verify a change: run the relevant function manually from the Apps Script editor's function dropdown (after `clasp push`, with the user's confirmation) and check the Executions log for errors and `Logger.log` output.
 
 ## Conventions
 
