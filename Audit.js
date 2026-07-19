@@ -1,0 +1,109 @@
+// RECURRING AUDIT — wire auditAccessAndReport() to a time-based trigger via
+// the Apps Script Triggers UI (few times a day).
+
+/**
+ * @typedef {{ type: 'extra'|'revoked'|'role-mismatch'|'unknown-accessor',
+ *             docName: string, accountName: string|null, email: string,
+ *             expected: string, actual: string }} AccessMismatch
+ */
+
+/**
+ * Compares the Access sheet matrix against real Drive access for every doc
+ * referenced in its header, across four drift categories: extra access
+ * (blank cell but real access), revoked access (R/W cell but no real
+ * access), role mismatch (R vs W disagree), and unknown accessors (real
+ * editors/viewers with no matching Access-sheet row). Leftover 'X' cells and
+ * doc-level failures (unresolvable name, DriveApp error) are logged and
+ * skipped rather than guessed at. Pure detection — no email side effect.
+ * @returns {AccessMismatch[]}
+ */
+function collectAccessMismatches() {
+  const { docNames, accountNames, matrix } = readAccessSheet();
+  const { byName: accountEmailsByName, byEmail: accountNamesByEmail } = getHandbookAccounts();
+  const docIdsByName = getHandbookDocIds();
+  const docAccessCaches = buildAllDocAccessCaches(docNames, docIdsByName);
+
+  const mismatches = [];
+
+  docNames.forEach((docName, col) => {
+    if (!docName) return;
+    const cache = docAccessCaches.get(normalizeKey(docName));
+    if (!cache || cache.status !== 'ok') return; // doc-level failure already logged once
+
+    const matchedEmails = new Set();
+
+    accountNames.forEach((accountName, row) => {
+      if (!accountName) return;
+
+      const email = accountEmailsByName.get(normalizeKey(accountName));
+      if (!email) {
+        Logger.log(
+          `Unresolvable account name "${accountName}" in Access sheet row ${row + ACCESS_SHEET_LAYOUT.FIRST_DATA_ROW}`
+        );
+        return;
+      }
+
+      const normalizedEmail = normalizeEmail(email);
+      matchedEmails.add(normalizedEmail);
+
+      const expected = matrix[row][col] || '';
+      if (expected === ACCESS_LEVEL.PENDING) {
+        Logger.log(`Leftover 'X' cell for "${accountName}" on "${docName}" — run the migration or fix manually; skipping.`);
+        return;
+      }
+
+      const actualLevel = getAccessLevel(email, cache);
+
+      if (!expected) {
+        if (actualLevel) {
+          mismatches.push({ type: 'extra', docName, accountName, email, expected: '(none)', actual: actualLevel });
+        }
+        return;
+      }
+
+      if (!actualLevel) {
+        mismatches.push({ type: 'revoked', docName, accountName, email, expected, actual: '(none)' });
+      } else if (actualLevel !== expected) {
+        mismatches.push({ type: 'role-mismatch', docName, accountName, email, expected, actual: actualLevel });
+      }
+    });
+
+    const allAccessors = new Map();
+    cache.editors.forEach((email) => allAccessors.set(email, ACCESS_LEVEL.WRITE));
+    cache.viewers.forEach((email) => {
+      if (!allAccessors.has(email)) allAccessors.set(email, ACCESS_LEVEL.READ);
+    });
+
+    allAccessors.forEach((level, email) => {
+      if (matchedEmails.has(email)) return;
+      const knownAccountName = accountNamesByEmail.get(email) ?? null;
+      mismatches.push({
+        type: 'unknown-accessor',
+        docName,
+        accountName: knownAccountName,
+        email,
+        expected: '(no row)',
+        actual: level,
+      });
+    });
+  });
+
+  return mismatches;
+}
+
+/**
+ * Trigger-ready entry point: runs the audit and emails Handbook!G2:G a
+ * report only when mismatches are found (no email when everything matches).
+ * @returns {void}
+ */
+function auditAccessAndReport() {
+  const mismatches = collectAccessMismatches();
+
+  if (mismatches.length === 0) {
+    Logger.log('Access audit: no mismatches found.');
+    return;
+  }
+
+  Logger.log(`Access audit: ${mismatches.length} mismatch(es) found — sending report.`);
+  sendMismatchReportEmail(mismatches);
+}

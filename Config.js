@@ -1,0 +1,25 @@
+const SHEET_NAMES = {
+  HANDBOOK: 'Handbook',
+  ACCESS: 'Access',
+};
+
+const HANDBOOK_COLUMNS = {
+  ACCOUNT_NAME: 1, // A
+  ACCOUNT_EMAIL: 2, // B
+  DOC_NAME: 4, // D
+  DOC_ID: 5, // E
+  NOTIFICATION_EMAIL: 7, // G
+};
+
+const ACCESS_SHEET_LAYOUT = {
+  HEADER_ROW: 1,
+  HEADER_FIRST_DOC_COLUMN: 2, // B
+  ACCOUNT_NAME_COLUMN: 1, // A
+  FIRST_DATA_ROW: 2,
+};
+
+const ACCESS_LEVEL = {
+  READ: 'R',
+  WRITE: 'W',
+  PENDING: 'X',
+};
