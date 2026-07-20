@@ -13,8 +13,8 @@ Google Apps Script project, container-bound to a Google Sheet, deployed with `cl
 - `Config.js` — sheet names, column layout, cell-value constants. Change this first if the sheet structure changes.
 - `SheetHelpers.js` — all Handbook/Access reads and writes. Always batches (`getDataRange().getValues()` / one `setValues()` call) — never read or write a single cell in a loop, that's what makes this workable at matrix scale under Apps Script quotas.
 - `DriveAccessHelpers.js` — `buildAllDocAccessCaches()` fetches each doc's real access exactly once per audit run (keyed by normalized doc name), not once per account/doc cell.
-- `Audit.js` — `collectAccessMismatches()` (pure detection, returns an array) and `auditAccessAndReport()` (trigger-ready entry point; emails only when mismatches exist).
-- `EmailReport.js` — HTML + plain-text formatting and the `MailApp.sendEmail` call.
+- `Audit.js` — `collectAccessMismatches()` (pure detection, returns an array) and `auditAccessAndReport()` (trigger-ready entry point). Sends the mismatch report whenever mismatches exist; otherwise sends a once-per-calendar-day "all clear" heartbeat, tracked via `PropertiesService` (`getTodayDateKey()`/`hasReportedToday()`/`markReportedToday()`, keyed by `AUDIT_STATE_KEYS.LAST_REPORT_DATE`).
+- `EmailReport.js` — HTML + plain-text formatting and the `MailApp.sendEmail` calls: `sendMismatchReportEmail()` for drift, `sendAllClearEmail()` for the daily heartbeat.
 
 ## Known gotchas
 
@@ -22,11 +22,15 @@ Google Apps Script project, container-bound to a Google Sheet, deployed with `cl
 
 The four mismatch `type` strings (`'extra'`, `'revoked'`, `'role-mismatch'`, `'unknown-accessor'`) are hardcoded literals in `Audit.js` (where they're pushed onto the `mismatches` array) and separately as keys in `EmailReport.js`'s `MISMATCH_TYPE_LABELS`. Nothing enforces they stay in sync — adding or renaming a type in `Audit.js` without updating `MISMATCH_TYPE_LABELS` prints `undefined` in the email report instead of erroring.
 
+`auditAccessAndReport()`'s once-daily heartbeat is tracked by a single Script Property (`lastReportDate`), shared script-wide (not per-user, not per-sheet). It resets naturally at local midnight in the project's configured time zone (`Europe/Kyiv`, per `appsscript.json`) — no cleanup job needed. To force-retest the all-clear path within the same day, clear it manually: Apps Script editor → Project Settings → Script Properties, or run `PropertiesService.getScriptProperties().deleteProperty('lastReportDate')` once from the editor.
+
 ## Operational setup
 
 `auditAccessAndReport` is invoked in production by a time-based trigger set up manually via the Apps Script Triggers UI (a few times a day) — this wiring lives outside the codebase entirely, not in any `.js` file. Don't add trigger-creation code (e.g. `ScriptApp.newTrigger`) unless explicitly asked.
 
 The report email addresses all of `Handbook!G2:G` in a single comma-joined `To:` field (see `EmailReport.js`), not `Bcc:` — this was a deliberate choice, not an oversight. Don't switch to Bcc without checking with the user first.
+
+The daily heartbeat exists so *silence* is the dead-trigger signal, not a false "all clear". If the trigger stops firing entirely, no email arrives at all — neither a mismatch report nor a heartbeat — since nothing runs to update `lastReportDate` or send anything. That silence is the intended failure signature, not a residual bug to fix.
 
 ## Verification
 

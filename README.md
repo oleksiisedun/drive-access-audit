@@ -17,7 +17,7 @@ The matrix started out filled with a placeholder `X` in every cell that expected
 
 ## Architecture
 
-Reading the sheets and reading real Drive access are both handled by dedicated helper modules so the audit logic itself only deals with already-normalized data. `SheetHelpers.js` batches all Handbook/Access sheet reads and writes (never per-cell). `DriveAccessHelpers.js` fetches each doc's editors/viewers exactly once per audit run — regardless of how many accounts reference that doc — and folds the file owner into the editor set, since `DriveApp`'s `getEditors()` does not include the owner by default. `Audit.js` compares the Access sheet matrix against that real-access cache and classifies drift into four categories (extra access, revoked access, role mismatch, unknown accessor); `EmailReport.js` formats and sends the result via `MailApp` to everyone in `Handbook!G2:G`, only when mismatches are found.
+Reading the sheets and reading real Drive access are both handled by dedicated helper modules so the audit logic itself only deals with already-normalized data. `SheetHelpers.js` batches all Handbook/Access sheet reads and writes (never per-cell). `DriveAccessHelpers.js` fetches each doc's editors/viewers exactly once per audit run — regardless of how many accounts reference that doc — and folds the file owner into the editor set, since `DriveApp`'s `getEditors()` does not include the owner by default. `Audit.js` compares the Access sheet matrix against that real-access cache and classifies drift into four categories (extra access, revoked access, role mismatch, unknown accessor); `EmailReport.js` formats and sends the result via `MailApp` to everyone in `Handbook!G2:G`. A mismatch report is sent every run that finds drift. When a run finds none, `Audit.js` sends a once-per-calendar-day "all clear" heartbeat instead — tracked via a `PropertiesService` script property — so repeated same-day trigger runs don't spam an inbox, but the maintainer still gets daily proof the trigger is alive even when there's nothing to report.
 
 ```mermaid
 graph TD
@@ -35,7 +35,8 @@ graph TD
     Report["auditAccessAndReport()"]
   end
 
-  EmailReport["EmailReport.js\nformat + send"]
+  Props[("Script Properties\nlastReportDate")]
+  EmailReport["EmailReport.js\nsendMismatchReportEmail()\nsendAllClearEmail()"]
   MailApp[("MailApp\nnotification emails")]
 
   Handbook --> SheetHelpers
@@ -44,6 +45,7 @@ graph TD
   SheetHelpers --> Collect
   DriveAccessHelpers --> Collect
   Collect --> Report
+  Report <--> Props
   Report --> EmailReport
   EmailReport --> MailApp
 ```
@@ -52,7 +54,7 @@ graph TD
 
 - **Run the recurring audit manually**: run `auditAccessAndReport()` from the Apps Script editor, or inspect drift without sending anything via `collectAccessMismatches()`.
 - **Schedule it**: in the Apps Script editor, open Triggers → Add Trigger → function `auditAccessAndReport`, time-driven, a few times a day.
-- **No email is sent** when `collectAccessMismatches()` returns no mismatches — the job only makes noise when there's something to report.
+- **When there are no mismatches**, you still get one "all clear" email per calendar day — the first no-mismatch run of the day. A heartbeat, so a silently-broken trigger doesn't look identical to "everything's fine." Later same-day no-mismatch runs stay silent, and a mismatch-report email on a given day also counts as that day's signal (no separate heartbeat follows).
 
 ## Development
 
