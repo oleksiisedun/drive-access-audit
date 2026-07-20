@@ -15,6 +15,7 @@ Google Apps Script project, container-bound to a Google Sheet, deployed with `cl
 - `DriveAccessHelpers.js` — `buildAllDocAccessCaches()` fetches each doc's real access exactly once per audit run (keyed by normalized doc name), not once per account/doc cell.
 - `Audit.js` — `collectAccessMismatches()` (pure detection, returns an array) and `auditAccessAndReport()` (trigger-ready entry point). Sends the mismatch report whenever mismatches exist; otherwise sends a once-per-calendar-day "all clear" heartbeat, tracked via `PropertiesService` (`getTodayDateKey()`/`hasReportedToday()`/`markReportedToday()`, keyed by `AUDIT_STATE_KEYS.LAST_REPORT_DATE`).
 - `EmailReport.js` — HTML + plain-text formatting and the `MailApp.sendEmail` calls: `sendMismatchReportEmail()` for drift, `sendAllClearEmail()` for the daily heartbeat.
+- `Menu.js` — `onOpen()` simple trigger adding the "More... ⭐️" custom menu (Run access audit → `auditAccessAndReport`) to the spreadsheet UI.
 
 ## Known gotchas
 
