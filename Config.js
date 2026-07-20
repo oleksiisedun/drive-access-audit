@@ -23,3 +23,7 @@ const ACCESS_LEVEL = {
   WRITE: 'W',
   PENDING: 'X',
 };
+
+const AUDIT_STATE_KEYS = {
+  LAST_REPORT_DATE: 'lastReportDate',
+};

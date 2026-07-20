@@ -92,18 +92,65 @@ function collectAccessMismatches() {
 }
 
 /**
- * Trigger-ready entry point: runs the audit and emails Handbook!G2:G a
- * report only when mismatches are found (no email when everything matches).
+ * Returns today's date key (yyyy-MM-dd) in the script's configured time
+ * zone, used to key the once-per-day "all clear" heartbeat state.
+ * @returns {string}
+ */
+function getTodayDateKey() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
+ * Whether an audit email (mismatch report or all-clear heartbeat) has
+ * already been sent today, per the persisted lastReportDate script
+ * property. Reads false on the very first run ever (no property set yet).
+ * @returns {boolean}
+ */
+function hasReportedToday() {
+  const lastReportDate = PropertiesService.getScriptProperties().getProperty(
+    AUDIT_STATE_KEYS.LAST_REPORT_DATE
+  );
+  return lastReportDate === getTodayDateKey();
+}
+
+/**
+ * Records that an audit email was sent today, so later runs the same day
+ * skip sending a redundant one.
+ * @returns {void}
+ */
+function markReportedToday() {
+  PropertiesService.getScriptProperties().setProperty(
+    AUDIT_STATE_KEYS.LAST_REPORT_DATE,
+    getTodayDateKey()
+  );
+}
+
+/**
+ * Trigger-ready entry point: runs the audit and emails Handbook!G2:G.
+ * Sends the mismatch report whenever mismatches are found. When none are
+ * found, sends a once-per-calendar-day "all clear" heartbeat instead, so a
+ * silently-broken trigger (or a run that erroneously finds nothing) doesn't
+ * look identical to "everything's fine" — but only the first no-mismatch
+ * run of the day emails; later same-day runs stay silent. A mismatch-report
+ * email already proves the script ran, so that path also marks the day as
+ * reported and suppresses a separate heartbeat.
  * @returns {void}
  */
 function auditAccessAndReport() {
   const mismatches = collectAccessMismatches();
 
   if (mismatches.length === 0) {
-    Logger.log('Access audit: no mismatches found.');
+    if (hasReportedToday()) {
+      Logger.log('Access audit: no mismatches found; all-clear already sent today.');
+      return;
+    }
+    Logger.log('Access audit: no mismatches found — sending all-clear heartbeat.');
+    sendAllClearEmail();
+    markReportedToday();
     return;
   }
 
   Logger.log(`Access audit: ${mismatches.length} mismatch(es) found — sending report.`);
   sendMismatchReportEmail(mismatches);
+  markReportedToday();
 }

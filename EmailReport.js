@@ -111,3 +111,27 @@ function sendMismatchReportEmail(mismatches) {
     htmlBody: buildMismatchReportHtml(mismatches),
   });
 }
+
+/**
+ * Sends a once-per-day "all clear" heartbeat to every address in
+ * Handbook!G2:G when an audit run finds no mismatches, so the maintainer
+ * gets a daily signal that the trigger is still alive even when there's
+ * nothing to report.
+ * @returns {void}
+ */
+function sendAllClearEmail() {
+  const recipients = getHandbookNotificationEmails();
+  if (recipients.length === 0) {
+    Logger.log('No notification emails configured in Handbook G2:G — skipping email.');
+    return;
+  }
+
+  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+
+  MailApp.sendEmail({
+    to: recipients.join(','),
+    subject: 'Drive access audit: all clear',
+    body: `No access mismatches found as of ${timestamp}. This is a once-daily heartbeat confirming the audit trigger is still running.`,
+    htmlBody: `<p>No access mismatches found as of <strong>${escapeHtml(timestamp)}</strong>.</p><p>This is a once-daily heartbeat confirming the audit trigger is still running.</p>`,
+  });
+}
